@@ -1,11 +1,11 @@
 import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { StyleSheet, Text, View } from 'react-native';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { ProfileProvider, TasksProvider, useProfile } from './src/lib/hooks';
 import { RootNavigator } from './src/navigation/RootNavigator';
-import { AppBackground } from './src/components/ui/AppBackground';
+import { Screen } from './src/components/Screen';
 import { theme } from './src/styles/theme';
 
 const TextWithDefaults = Text as typeof Text & { defaultProps?: { style?: unknown } };
@@ -17,14 +17,12 @@ function AppShell() {
 
   if (isLoading) {
     return (
-      <AppBackground>
-        <View style={styles.centered}>
-          <Text style={styles.logoText}>FlowPilot</Text>
-          <View style={styles.progressTrack}>
-            <View style={styles.progressFill} />
-          </View>
+      <Screen style={styles.centered}>
+        <Text style={styles.logoText}>FlowPilot</Text>
+        <View style={styles.progressTrack}>
+          <View style={styles.progressFill} />
         </View>
-      </AppBackground>
+      </Screen>
     );
   }
 
@@ -41,11 +39,9 @@ export default function App() {
 
   if (!fontsLoaded) {
     return (
-      <AppBackground>
-        <View style={styles.centered}>
-          <Text style={styles.logoText}>FlowPilot</Text>
-        </View>
-      </AppBackground>
+      <Screen style={styles.centered}>
+        <Text style={styles.logoText}>FlowPilot</Text>
+      </Screen>
     );
   }
 

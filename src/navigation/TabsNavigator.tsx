@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { FocusScreen } from '../screens/Focus';
@@ -7,7 +7,7 @@ import { PlanScreen } from '../screens/Plan';
 import { SettingsScreen } from '../screens/Settings';
 import { TodayScreen } from '../screens/Today';
 import { TabsParamList } from './types';
-import { BottomTabBar } from '../components/ui/BottomTabBar';
+import { BottomTabBar } from '../components/BottomTabBar';
 
 const Tab = createBottomTabNavigator<TabsParamList>();
 
