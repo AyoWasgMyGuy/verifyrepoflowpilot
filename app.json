@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "FlowPilot",
+    "slug": "flowpilot",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "jsEngine": "hermes",
+    "android": {
+      "package": "com.flowpilot.app"
+    },
+    "plugins": [
+      "expo-font"
+    ]
+  }
+}
