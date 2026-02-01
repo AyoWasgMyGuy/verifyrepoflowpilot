@@ -24,7 +24,14 @@ describe('Today checkbox undo', () => {
   it('marks done and restores via undo snapshot', () => {
     const setStatus = jest.fn();
     const updateTask = jest.fn();
+    const addTasks = jest.fn();
+    const deleteTask = jest.fn();
+    const addSubtask = jest.fn();
+    const toggleSubtask = jest.fn();
+    const resetTasks = jest.fn();
+    const refresh = jest.fn();
     const showToast = jest.fn();
+    const hideToast = jest.fn();
 
     jest.spyOn(hooks, 'useTasks').mockReturnValue({
       tasks: [
@@ -38,15 +45,22 @@ describe('Today checkbox undo', () => {
           updatedAt: new Date().toISOString(),
         },
       ],
+      isLoading: false,
       setStatus,
       updateTask,
+      addTasks,
+      deleteTask,
+      addSubtask,
+      toggleSubtask,
+      resetTasks,
+      refresh,
     } as ReturnType<typeof hooks.useTasks>);
 
     jest.spyOn(hooks, 'useProfile').mockReturnValue({
       profile: { displayName: 'Test', workStart: '09:00', workEnd: '17:00', focusMinutesDefault: 25 },
     } as ReturnType<typeof hooks.useProfile>);
 
-    jest.spyOn(toast, 'useToast').mockReturnValue({ showToast } as ReturnType<typeof toast.useToast>);
+    jest.spyOn(toast, 'useToast').mockReturnValue({ showToast, hideToast } as ReturnType<typeof toast.useToast>);
 
     const navigation = { navigate: jest.fn() };
     const route = { key: 'Today', name: 'Today' };

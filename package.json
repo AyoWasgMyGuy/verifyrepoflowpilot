@@ -37,7 +37,7 @@
   "devDependencies": {
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.3.3",
-    "@types/jest": "^30.0.0",
+    "@types/jest": "^29.5.14",
     "@types/react": "~19.1.10",
     "babel-preset-expo": "^54.0.10",
     "husky": "^9.1.7",
