@@ -3,7 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
-import { ProfileProvider, TasksProvider, useProfile } from './src/lib/hooks';
+import { FocusProvider, ProfileProvider, TasksProvider, useProfile } from './src/lib/hooks';
+import { ToastProvider } from './src/lib/toast';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { Screen } from './src/components/Screen';
 import { theme } from './src/styles/theme';
@@ -49,9 +50,13 @@ export default function App() {
     <SafeAreaProvider>
       <ProfileProvider>
         <TasksProvider>
-          <NavigationContainer>
-            <AppShell />
-          </NavigationContainer>
+          <FocusProvider>
+            <ToastProvider>
+              <NavigationContainer>
+                <AppShell />
+              </NavigationContainer>
+            </ToastProvider>
+          </FocusProvider>
         </TasksProvider>
       </ProfileProvider>
     </SafeAreaProvider>

@@ -1,7 +1,18 @@
 node_modules
+.expo
 .expo/
 .expo-shared/
+.expo-export/
 dist/
 build/
-reference/
+design_reference/
 *.log
+# local editor
+.vscode/
+
+# backup/reference folders (you showed src/_legacy)
+src/_legacy/
+
+# mac/windows noise
+.DS_Store
+Thumbs.db

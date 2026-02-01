@@ -1,11 +1,11 @@
 ﻿import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { AuthScreen } from '../screens/Auth';
 import { BrainDumpModal } from '../screens/BrainDumpModal';
 import { OnboardingScreen } from '../screens/Onboarding';
+import { Onboarding2Screen } from '../screens/Onboarding2';
 import { ReviewModal } from '../screens/ReviewModal';
 import { TaskDetailScreen } from '../screens/TaskDetail';
-import { WelcomeScreen } from '../screens/Welcome';
+import { TodayListScreen } from '../screens/TodayList';
 import { SplashScreen } from '../screens/Splash';
 import { TabsNavigator } from './TabsNavigator';
 import { RootStackParamList } from './types';
@@ -29,11 +29,11 @@ export function RootNavigator({ initialRouteName }: Props) {
       }}
     >
       <Stack.Screen name="Splash" component={SplashScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Onboarding2" component={Onboarding2Screen} options={{ headerShown: false }} />
       <Stack.Screen name="Tabs" component={TabsNavigator} options={{ headerShown: false }} />
-      <Stack.Screen name="TaskDetail" component={TaskDetailScreen} options={{ title: 'Task' }} />
+      <Stack.Screen name="TaskDetail" component={TaskDetailScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="TodayList" component={TodayListScreen} options={{ title: 'Today' }} />
       <Stack.Screen
         name="BrainDump"
         component={BrainDumpModal}

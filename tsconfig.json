@@ -13,7 +13,13 @@
       ]
     }
   },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "App.tsx"
+  ],
   "exclude": [
-    "reference/**"
+    "design_reference/**",
+    "src/_legacy/**"
   ]
 }

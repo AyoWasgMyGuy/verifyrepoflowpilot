@@ -1,4 +1,4 @@
-﻿import { NavigatorScreenParams } from '@react-navigation/native';
+import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type TabsParamList = {
   Today: undefined;
@@ -10,11 +10,11 @@ export type TabsParamList = {
 
 export type RootStackParamList = {
   Splash: undefined;
-  Welcome: undefined;
-  Auth: undefined;
-  Onboarding: { guest?: boolean } | undefined;
+  Onboarding: undefined;
+  Onboarding2: { displayName?: string; goal?: string } | undefined;
   Tabs: NavigatorScreenParams<TabsParamList>;
   BrainDump: undefined;
   Review: { items: string[] };
   TaskDetail: { taskId: string };
+  TodayList: undefined;
 };
