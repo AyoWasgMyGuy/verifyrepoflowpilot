@@ -3,9 +3,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../styles/theme';
-import { TAB_BAR_BASE_HEIGHT } from '../lib/layout';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -28,19 +26,9 @@ const testIds: Record<string, string> = {
 export function BottomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const Container = Platform.OS === 'ios' ? BlurView : View;
   const containerProps = Platform.OS === 'ios' ? { intensity: 40, tint: 'dark' as const } : {};
-  const insets = useSafeAreaInsets();
 
   return (
-    <Container
-      {...containerProps}
-      style={[
-        styles.container,
-        {
-          minHeight: TAB_BAR_BASE_HEIGHT + insets.bottom,
-          paddingBottom: insets.bottom + theme.spacing.sm,
-        },
-      ]}
-    >
+    <Container {...containerProps} style={styles.container}>
       <View style={styles.row}>
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
@@ -91,6 +79,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.05)',
     paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.lg,
     paddingHorizontal: theme.spacing.lg,
     backgroundColor: 'rgba(17,24,24,0.95)', // matches Flow-pilot nav background
   },
@@ -103,8 +92,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     minWidth: 64,
-    minHeight: 44,
-    justifyContent: 'center',
   },
   label: {
     fontSize: 10,

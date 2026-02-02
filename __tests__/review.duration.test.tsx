@@ -1,14 +1,18 @@
 import React from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { ReviewModal } from '../src/screens/ReviewModal';
 import * as hooks from '../src/lib/hooks';
+import * as toast from '../src/lib/toast';
 
 describe('ReviewModal duration save', () => {
   const addTasks = jest.fn(async () => undefined);
 
-  beforeEach(() => {
+  beforeEach(async () => {
     addTasks.mockClear();
+    await AsyncStorage.clear();
     jest.spyOn(hooks, 'useTasks').mockReturnValue({ addTasks } as ReturnType<typeof hooks.useTasks>);
+    jest.spyOn(toast, 'useToast').mockReturnValue({ showToast: jest.fn(), hideToast: jest.fn() } as ReturnType<typeof toast.useToast>);
   });
 
   afterEach(() => {

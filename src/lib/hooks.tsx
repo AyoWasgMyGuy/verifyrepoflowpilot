@@ -98,6 +98,7 @@ export function TasksProvider({ children }: { children: React.ReactNode }) {
         priority: draft.priority,
         estimateMinutes: draft.estimateMinutes,
         dueAt: draft.dueAt ?? null,
+        category: draft.category ?? null,
         createdAt: now,
         updatedAt: now,
       }))

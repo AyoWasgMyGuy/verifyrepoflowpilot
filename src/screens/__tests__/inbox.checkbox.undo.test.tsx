@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { InboxScreen } from '../Inbox';
 import * as hooks from '../../lib/hooks';
 import * as toast from '../../lib/toast';
@@ -17,7 +17,7 @@ jest.mock('../../lib/layout', () => ({
 }));
 
 describe('Inbox checkbox undo', () => {
-  it('marks done and restores via undo snapshot', () => {
+  it('marks done and restores via undo snapshot', async () => {
     const setStatus = jest.fn();
     const updateTask = jest.fn();
     const addTasks = jest.fn();
@@ -60,6 +60,10 @@ describe('Inbox checkbox undo', () => {
     const { getByTestId } = render(
       <InboxScreen navigation={navigation as never} route={route as never} />
     );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     fireEvent.press(getByTestId('inbox-toggle-task-1'));
 

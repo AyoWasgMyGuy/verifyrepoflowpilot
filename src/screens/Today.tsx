@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProgressRing } from '../components/ProgressRing';
 import { Screen } from '../components/Screen';
 import { StatTile } from '../components/StatTile';
@@ -11,14 +12,13 @@ import { SurfaceCard } from '../components/SurfaceCard';
 import { TaskRow } from '../components/TaskRow';
 import { useBrainDump } from '../lib/brainDump';
 import { useProfile, useTasks } from '../lib/hooks';
-import { useFloatingBottomOffset } from '../lib/layout';
-import { clampPriority, priorityToLevel } from '../lib/priority';
 import { Task } from '../lib/repo';
-import { useToast } from '../lib/toast';
 import { RootStackParamList, TabsParamList } from '../navigation/types';
 import { theme } from '../styles/theme';
 
 type Props = BottomTabScreenProps<TabsParamList, 'Today'>;
+
+type PriorityLevel = 'high' | 'medium' | 'low';
 
 function sortTasks(tasks: Task[]) {
   return [...tasks].sort((a, b) => {
@@ -40,39 +40,36 @@ function sortTasks(tasks: Task[]) {
   });
 }
 
+function priorityLevel(priority: number): PriorityLevel {
+  if (priority >= 4) return 'high';
+  if (priority === 3) return 'medium';
+  return 'low';
+}
+
 export function TodayScreen({ navigation }: Props) {
-  const { tasks, setStatus, updateTask } = useTasks();
+  const { tasks, setStatus } = useTasks();
   const { profile } = useProfile();
   const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { openBrainDump } = useBrainDump();
-  const floatingOffset = useFloatingBottomOffset();
-  const { showToast } = useToast();
+  const insets = useSafeAreaInsets();
 
-  const { topTasks, completedTodayCount, plannedTodayCount, remainingTodayCount } = useMemo(() => {
+  const { topTasks, doneCount, totalCount } = useMemo(() => {
     const active = tasks.filter((task) => task.status !== 'archived');
-    const todayOpen = active.filter((task) => task.status === 'today');
-    const sorted = sortTasks(todayOpen);
-    const todayKey = new Date().toDateString();
-    const completedToday = active.filter(
-      (task) =>
-        task.status === 'done' &&
-        task.completedFrom === 'today' &&
-        task.completedAt &&
-        new Date(task.completedAt).toDateString() === todayKey
-    );
-    const plannedToday = todayOpen.length + completedToday.length;
+    const open = active.filter((task) => task.status !== 'done');
+    const sorted = sortTasks(open);
+    const done = active.filter((task) => task.status === 'done').length;
+    const total = active.length;
     return {
       topTasks: sorted.slice(0, 3),
-      completedTodayCount: completedToday.length,
-      plannedTodayCount: plannedToday,
-      remainingTodayCount: todayOpen.length,
+      doneCount: done,
+      totalCount: total,
     };
   }, [tasks]);
 
   const name = profile?.displayName ?? 'Guest';
-  const progress = plannedTodayCount > 0 ? completedTodayCount / plannedTodayCount : 0;
-  const fabBottom = floatingOffset;
-  const scrollPaddingBottom = floatingOffset + 140;
+  const progress = totalCount > 0 ? doneCount / totalCount : 0;
+  const fabBottom = insets.bottom + 96;
+  const scrollPaddingBottom = insets.bottom + 140;
 
   return (
     <Screen>
@@ -105,12 +102,12 @@ export function TodayScreen({ navigation }: Props) {
               <View style={styles.statsGlow} />
               <View style={styles.statsRow}>
                 <View style={styles.statsText}>
-                  <Text style={styles.statsLabel}>TODAY PROGRESS</Text>
+                  <Text style={styles.statsLabel}>PRIORITY PROGRESS</Text>
                   <View style={styles.statsCountRow}>
-                <Text style={styles.statsCount}>{completedTodayCount}</Text>
-                <Text style={styles.statsTotal}>/ {plannedTodayCount} tasks</Text>
+                    <Text style={styles.statsCount}>{doneCount}</Text>
+                    <Text style={styles.statsTotal}>/ {totalCount} tasks</Text>
                   </View>
-                  <Text style={styles.statsHint}>Keep it moving.</Text>
+                  <Text style={styles.statsHint}>Keep the momentum!</Text>
                 </View>
                 <View style={styles.ringWrap}>
                   <ProgressRing progress={progress} size={96} strokeWidth={8} trackColor={theme.colors.surfaceAlt} />
@@ -119,18 +116,16 @@ export function TodayScreen({ navigation }: Props) {
               </View>
             </SurfaceCard>
 
-        <View style={styles.miniStatsRow}>
-          <StatTile label="Total" value={`${plannedTodayCount}`} iconName="list" />
-          <StatTile label="Done" value={`${completedTodayCount}`} iconName="checkmark-done" iconColor={theme.colors.primary} />
-          <StatTile label="Focus" value="45m" iconName="timer" iconColor={theme.colors.accent} />
-        </View>
+            <View style={styles.miniStatsRow}>
+              <StatTile label="Total" value={`${totalCount}`} iconName="list" />
+              <StatTile label="Done" value={`${doneCount}`} iconName="checkmark-done" iconColor={theme.colors.primary} />
+              <StatTile label="Focus" value="45m" iconName="timer" iconColor={theme.colors.accent} />
+            </View>
 
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Top Tasks</Text>
-              <Pressable onPress={() => rootNavigation.navigate('TodayList')}>
-                <Text style={styles.sectionAction}>
-                  View all{remainingTodayCount > 0 ? ` (${remainingTodayCount})` : ''}
-                </Text>
+              <Pressable onPress={() => navigation.navigate('Inbox')}>
+                <Text style={styles.sectionAction}>View All</Text>
               </Pressable>
             </View>
 
@@ -139,43 +134,16 @@ export function TodayScreen({ navigation }: Props) {
                 <Text style={styles.emptyText}>No tasks for today. Enjoy the calm!</Text>
               ) : (
                 topTasks.map((task) => (
-                    <TaskRow
-                      key={task.id}
-                      title={task.title}
-                      subtitle={task.notes || 'No description'}
-                      priority={priorityToLevel(clampPriority(task.priority))}
-                      done={task.status === 'done'}
-                      onPress={() => rootNavigation.navigate('TaskDetail', { taskId: task.id })}
-                      onToggle={() => {
-                        if (task.status === 'done') {
-                          setStatus(task.id, 'today');
-                          return;
-                        }
-                        const snapshot = {
-                          id: task.id,
-                          prevStatus: task.status,
-                          prevCompletedAt: task.completedAt,
-                          prevCompletedFrom: task.completedFrom,
-                        };
-                        const baseTask = { ...task };
-                        setStatus(task.id, 'done');
-                        showToast({
-                          message: 'Marked done',
-                          actionLabel: 'Undo',
-                          durationMs: 5000,
-                          onAction: () => {
-                            updateTask({
-                              ...baseTask,
-                              status: snapshot.prevStatus,
-                              completedAt: snapshot.prevCompletedAt,
-                              completedFrom: snapshot.prevCompletedFrom,
-                            });
-                          },
-                        });
-                      }}
-                      toggleTestID={`task-toggle-${task.id}`}
-                    />
-                  ))
+                  <TaskRow
+                    key={task.id}
+                    title={task.title}
+                    subtitle={task.notes || 'No description'}
+                    priority={priorityLevel(task.priority)}
+                    done={task.status === 'done'}
+                    onPress={() => rootNavigation.navigate('TaskDetail', { taskId: task.id })}
+                    onToggle={() => setStatus(task.id, task.status === 'done' ? 'today' : 'done')}
+                  />
+                ))
               )}
             </View>
           </View>

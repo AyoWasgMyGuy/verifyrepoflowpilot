@@ -8,12 +8,14 @@ type IconCircleButtonProps = {
   onPress?: () => void;
   size?: number;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 };
 
-export function IconCircleButton({ icon, onPress, size = 40, style }: IconCircleButtonProps) {
+export function IconCircleButton({ icon, onPress, size = 40, style, testID }: IconCircleButtonProps) {
   return (
     <Pressable
       onPress={onPress}
+      testID={testID}
       style={({ pressed }) => [
         styles.base,
         { width: size, height: size, borderRadius: size / 2 },

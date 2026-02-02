@@ -14,7 +14,7 @@ export type RootStackParamList = {
   Onboarding2: { displayName?: string; goal?: string } | undefined;
   Tabs: NavigatorScreenParams<TabsParamList>;
   BrainDump: undefined;
-  Review: { items: string[] };
+  Review: { items?: string[]; openSavedDraft?: true };
   TaskDetail: { taskId: string };
   TodayList: undefined;
 };

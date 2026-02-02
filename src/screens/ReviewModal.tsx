@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { CommonActions } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BottomActionDock } from '../components/BottomActionDock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { Screen } from '../components/Screen';
@@ -19,31 +21,54 @@ import { useTasks } from '../lib/hooks';
 import { formatDuration, minutesFromParts, splitMinutes } from '../lib/duration';
 import { clampPriority } from '../lib/priority';
 import { TaskDraft } from '../lib/repo';
+import { useToast } from '../lib/toast';
+import { categoryOptions, normalizeCategory, type CategoryKey } from '../lib/categories';
+import { validateIsoDate } from '../lib/dueDate';
+import { clearReviewDraft, formatSavedAgo, loadReviewDraft, saveReviewDraft, REVIEW_DRAFT_KEY } from '../lib/reviewDraft';
 import { RootStackParamList } from '../navigation/types';
 import { theme } from '../styles/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Review'>;
 
-type DraftState = TaskDraft & { key: string };
+type DraftState = Omit<TaskDraft, 'category'> & { key: string; category: CategoryKey };
 
 export function ReviewModal({ navigation, route }: Props) {
   const { addTasks } = useTasks();
+  const { showToast } = useToast();
+  const openSavedDraft = route.params?.openSavedDraft === true;
   const initialDrafts = useMemo<DraftState[]>(
     () =>
-      route.params.items.map((title, index) => ({
+      (route.params?.items ?? []).map((title, index) => ({
         key: `${index}`,
         title,
         priority: 3,
         estimateMinutes: 30,
         dueAt: null,
+        category: 'general',
       })),
-    [route.params.items]
+    [route.params?.items]
   );
 
   const [drafts, setDrafts] = useState<DraftState[]>(initialDrafts);
+  const [resumePrompt, setResumePrompt] = useState<{ drafts: DraftState[]; savedAt: number } | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const autosaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [discardConfirm, setDiscardConfirm] = useState(false);
   const [durationEditor, setDurationEditor] = useState<{ key: string } | null>(null);
   const [hoursText, setHoursText] = useState('');
   const [minutesText, setMinutesText] = useState('');
+  const [suppressEmptyState, setSuppressEmptyState] = useState(false);
+  const isDiscardingRef = useRef(false);
+
+  const normalizeDrafts = (items: Array<TaskDraft & { key: string }>): DraftState[] =>
+    items.map((draft) => ({
+      ...draft,
+      priority: draft.priority ?? 3,
+      estimateMinutes: draft.estimateMinutes ?? 30,
+      dueAt: draft.dueAt ?? null,
+      category: normalizeCategory(draft.category),
+    }));
 
   const updateDraft = (key: string, changes: Partial<DraftState>) => {
     setDrafts((prev) => prev.map((draft) => (draft.key === key ? { ...draft, ...changes } : draft)));
@@ -56,13 +81,73 @@ export function ReviewModal({ navigation, route }: Props) {
     setMinutesText(String(parts.minutes));
   };
 
+  useEffect(() => {
+    let mounted = true;
+    const loadDraft = async () => {
+      const stored = await loadReviewDraft();
+      if (!mounted) return;
+      if (openSavedDraft) {
+        if (stored?.drafts?.length) {
+          setDrafts(normalizeDrafts(stored.drafts));
+        } else {
+          setDrafts([]);
+        }
+        setResumePrompt(null);
+        setIsInitialized(true);
+        return;
+      }
+
+      if (stored?.drafts?.length) {
+        setResumePrompt({ drafts: normalizeDrafts(stored.drafts), savedAt: stored.savedAt });
+        setIsInitialized(false);
+        return;
+      }
+      setIsInitialized(true);
+    };
+    loadDraft();
+    return () => {
+      mounted = false;
+    };
+  }, [openSavedDraft]);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+    if (isDiscardingRef.current) return;
+    if (autosaveRef.current) {
+      clearTimeout(autosaveRef.current);
+    }
+    if (drafts.length === 0) {
+      clearReviewDraft();
+      return;
+    }
+    autosaveRef.current = setTimeout(() => {
+      saveReviewDraft(
+        drafts.map((draft) => ({
+          key: draft.key,
+          title: draft.title,
+          priority: draft.priority,
+          estimateMinutes: draft.estimateMinutes,
+          dueAt: draft.dueAt ?? null,
+          category: draft.category === 'general' ? null : draft.category,
+        }))
+      );
+    }, 300);
+    return () => {
+      if (autosaveRef.current) {
+        clearTimeout(autosaveRef.current);
+      }
+    };
+  }, [drafts, isInitialized]);
+
   const handleSave = async () => {
     const cleaned = drafts
       .map((draft) => ({
         title: draft.title.trim(),
         priority: clampPriority(draft.priority),
         estimateMinutes: draft.estimateMinutes,
-        dueAt: draft.dueAt?.trim() ? draft.dueAt.trim() : null,
+        dueAt:
+          draft.dueAt?.trim() && validateIsoDate(draft.dueAt.trim()) ? draft.dueAt.trim() : null,
+        category: draft.category === 'general' ? null : draft.category,
       }))
       .filter((draft) => draft.title.length > 0);
 
@@ -72,18 +157,79 @@ export function ReviewModal({ navigation, route }: Props) {
     }
 
     await addTasks(cleaned);
+    await clearReviewDraft();
     navigation.navigate('Tabs', { screen: 'Inbox' });
+  };
+
+  const handleBack = async () => {
+    if (autosaveRef.current) {
+      clearTimeout(autosaveRef.current);
+    }
+    if (drafts.length > 0) {
+      await saveReviewDraft(
+        drafts.map((draft) => ({
+          key: draft.key,
+          title: draft.title,
+          priority: draft.priority,
+          estimateMinutes: draft.estimateMinutes,
+          dueAt: draft.dueAt ?? null,
+          category: draft.category === 'general' ? null : draft.category,
+        }))
+      );
+    } else {
+      await clearReviewDraft();
+    }
+    showToast({
+      message: 'Draft saved',
+      actionLabel: 'Review',
+      durationMs: 5000,
+      onAction: () => navigation.navigate('Review', { openSavedDraft: true }),
+    });
+    if (navigation.popToTop) {
+      navigation.popToTop();
+    }
+    navigation.navigate('Tabs', { screen: 'Today' });
+  };
+
+  const discardDraftAndExit = async () => {
+    if (autosaveRef.current) {
+      clearTimeout(autosaveRef.current);
+    }
+    isDiscardingRef.current = true;
+    setSuppressEmptyState(true);
+    await AsyncStorage.removeItem(REVIEW_DRAFT_KEY);
+    setDrafts([]);
+    setResumePrompt(null);
+    setIsInitialized(true);
+    setDiscardConfirm(false);
+    setMenuOpen(false);
+    showToast({ message: 'Draft discarded' });
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'Tabs', params: { screen: 'Today' } }],
+      })
+    );
   };
 
   return (
     <Screen>
       <View style={styles.page} testID="review-modal">
         <View style={styles.header}>
-          <Pressable style={styles.iconButton} onPress={() => navigation.goBack()}>
+          <Pressable style={styles.iconButton} onPress={handleBack}>
             <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
           </Pressable>
           <Text style={styles.title}>Review Tasks</Text>
-          <View style={styles.iconButton} />
+          <Pressable
+            style={styles.iconButton}
+            onPress={() => {
+              setMenuOpen(true);
+              setDiscardConfirm(false);
+            }}
+            testID="review-menu-button"
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.text} />
+          </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -151,6 +297,29 @@ export function ReviewModal({ navigation, route }: Props) {
                     })}
                   </View>
                 </View>
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabel}>CATEGORY</Text>
+                  <View style={styles.categoryPillGroup}>
+                    {categoryOptions.map((option) => {
+                      const active = draft.category === option.key;
+                      return (
+                        <Pressable
+                          key={option.key}
+                          style={[styles.categoryPill, active && styles.categoryPillActive]}
+                          onPress={() => updateDraft(draft.key, { category: option.key })}
+                          testID={`review-category-${draft.key}-${option.key}`}
+                        >
+                          <Text
+                            numberOfLines={1}
+                            style={[styles.categoryText, active && styles.categoryTextActive]}
+                          >
+                            {option.label.toUpperCase()}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
                 <View style={styles.durationRow}>
                   <Text style={styles.metaLabel}>DURATION</Text>
                   <Pressable
@@ -173,6 +342,106 @@ export function ReviewModal({ navigation, route }: Props) {
             testID="add-all-tasks"
           />
         </BottomActionDock>
+
+        {resumePrompt ? (
+          <View style={styles.resumeOverlay}>
+            <Pressable style={styles.resumeBackdrop} />
+            <SurfaceCard style={styles.resumeCard}>
+              <Text style={styles.resumeTitle}>Resume draft?</Text>
+              <Text style={styles.resumeSubtitle}>
+                You have a saved review draft with {resumePrompt.drafts.length} tasks. {formatSavedAgo(resumePrompt.savedAt)}
+              </Text>
+              <View style={styles.resumeActions}>
+                <Pressable
+                  style={styles.resumePrimary}
+                  onPress={() => {
+                    setDrafts(resumePrompt.drafts);
+                    setResumePrompt(null);
+                    setIsInitialized(true);
+                  }}
+                  testID="review-resume"
+                >
+                  <Text style={styles.resumePrimaryText}>Resume</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.resumeSecondary}
+                  onPress={async () => {
+                    await clearReviewDraft();
+                    setDrafts(initialDrafts);
+                    setResumePrompt(null);
+                    setIsInitialized(true);
+                  }}
+                  testID="review-start-new"
+                >
+                  <Text style={styles.resumeSecondaryText}>Start new</Text>
+                </Pressable>
+              </View>
+            </SurfaceCard>
+          </View>
+        ) : null}
+
+        {openSavedDraft && isInitialized && drafts.length === 0 && !suppressEmptyState ? (
+          <View style={styles.emptyStateWrap}>
+            <SurfaceCard style={styles.emptyStateCard}>
+              <Text style={styles.emptyStateTitle}>No saved draft</Text>
+              <Text style={styles.emptyStateSubtitle}>
+                Start a new brain dump to create tasks.
+              </Text>
+              <Pressable
+                style={styles.emptyStateButton}
+                onPress={() => navigation.navigate('BrainDump')}
+              >
+                <Text style={styles.emptyStateButtonText}>Start Brain Dump</Text>
+              </Pressable>
+            </SurfaceCard>
+          </View>
+        ) : null}
+
+        {menuOpen ? (
+          <View style={styles.menuOverlay}>
+            <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
+            <SurfaceCard style={styles.menuCard}>
+              {discardConfirm ? (
+                <View style={styles.menuSection}>
+                  <Text style={styles.menuTitle}>Discard draft?</Text>
+                  <Text style={styles.menuSubtitle}>This clears your current edits.</Text>
+                  <View style={styles.menuActions}>
+                    <Pressable
+                      style={styles.menuButtonSecondary}
+                      onPress={() => setDiscardConfirm(false)}
+                    >
+                      <Text style={styles.menuButtonSecondaryText}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                  style={styles.menuButtonDanger}
+                  onPress={discardDraftAndExit}
+                  testID="review-discard-confirm"
+                >
+                  <Text style={styles.menuButtonDangerText}>Discard</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.menuSection}>
+                  <Pressable
+                    style={styles.menuItem}
+                    onPress={() => setDiscardConfirm(true)}
+                    testID="review-discard"
+                  >
+                    <Text style={styles.menuItemDanger}>Discard draft</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.menuItem}
+                    onPress={() => setMenuOpen(false)}
+                    testID="review-discard-cancel"
+                  >
+                    <Text style={styles.menuItemText}>Cancel</Text>
+                  </Pressable>
+                </View>
+              )}
+            </SurfaceCard>
+          </View>
+        ) : null}
 
         {durationEditor ? (
           <View style={styles.modalOverlay}>
@@ -404,6 +673,36 @@ const styles = StyleSheet.create({
   priorityTextActive: {
     color: theme.colors.bg,
   },
+  categoryPillGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    minWidth: 220,
+    maxWidth: '100%',
+    backgroundColor: theme.colors.surfaceAlt,
+    padding: 4,
+    borderRadius: 999,
+  },
+  categoryPill: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryPillActive: {
+    backgroundColor: theme.colors.primary,
+  },
+  categoryText: {
+    color: theme.colors.textMuted,
+    fontFamily: theme.fonts.display,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textAlign: 'center',
+  },
+  categoryTextActive: {
+    color: theme.colors.bg,
+  },
   durationRow: {
     gap: theme.spacing.sm,
   },
@@ -529,5 +828,178 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  resumeOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.lg,
+  },
+  resumeBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  resumeCard: {
+    width: '100%',
+    gap: theme.spacing.md,
+  },
+  resumeTitle: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.display,
+    fontSize: theme.text.body,
+  },
+  resumeSubtitle: {
+    color: theme.colors.textMuted,
+    fontFamily: theme.fonts.body,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  resumeActions: {
+    gap: theme.spacing.sm,
+  },
+  resumePrimary: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.primary,
+  },
+  resumePrimaryText: {
+    color: theme.colors.bg,
+    fontFamily: theme.fonts.display,
+    fontSize: 12,
+  },
+  resumeSecondary: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: theme.radius.lg,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  resumeSecondaryText: {
+    color: theme.colors.textMuted,
+    fontFamily: theme.fonts.display,
+    fontSize: 12,
+  },
+  menuOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.xl,
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  menuCard: {
+    width: '100%',
+    gap: theme.spacing.md,
+  },
+  menuSection: {
+    gap: theme.spacing.sm,
+  },
+  menuTitle: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.display,
+    fontSize: theme.text.body,
+  },
+  menuSubtitle: {
+    color: theme.colors.textMuted,
+    fontFamily: theme.fonts.body,
+    fontSize: 12,
+  },
+  menuActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+    marginTop: theme.spacing.sm,
+  },
+  menuItem: {
+    paddingVertical: theme.spacing.sm,
+  },
+  menuItemText: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.display,
+    fontSize: theme.text.body,
+  },
+  menuItemDanger: {
+    color: '#f87171',
+    fontFamily: theme.fonts.display,
+    fontSize: theme.text.body,
+  },
+  menuButtonSecondary: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: theme.radius.lg,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  menuButtonSecondaryText: {
+    color: theme.colors.textMuted,
+    fontFamily: theme.fonts.display,
+    fontSize: 12,
+  },
+  menuButtonDanger: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: theme.radius.lg,
+    backgroundColor: 'rgba(248,113,113,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.4)',
+  },
+  menuButtonDangerText: {
+    color: '#f87171',
+    fontFamily: theme.fonts.display,
+    fontSize: 12,
+  },
+  emptyStateWrap: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.lg,
+  },
+  emptyStateCard: {
+    width: '100%',
+    gap: theme.spacing.sm,
+    alignItems: 'center',
+  },
+  emptyStateTitle: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.display,
+    fontSize: theme.text.body,
+  },
+  emptyStateSubtitle: {
+    color: theme.colors.textMuted,
+    fontFamily: theme.fonts.body,
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  emptyStateButton: {
+    marginTop: theme.spacing.sm,
+    paddingVertical: 12,
+    paddingHorizontal: theme.spacing.xl,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.primary,
+  },
+  emptyStateButtonText: {
+    color: theme.colors.bg,
+    fontFamily: theme.fonts.display,
+    fontSize: 12,
   },
 });

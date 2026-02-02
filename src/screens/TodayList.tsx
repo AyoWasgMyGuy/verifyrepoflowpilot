@@ -1,7 +1,8 @@
-﻿import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../components/Screen';
 import { TaskRow } from '../components/TaskRow';
 import { useTasks } from '../lib/hooks';
@@ -10,6 +11,7 @@ import { Task } from '../lib/repo';
 import { RootStackParamList } from '../navigation/types';
 import { theme } from '../styles/theme';
 import { useToast } from '../lib/toast';
+import { isCompletedToday } from '../lib/day';
 
 function sortTasks(tasks: Task[]) {
   return [...tasks].sort((a, b) => {
@@ -35,10 +37,16 @@ export function TodayListScreen() {
   const { tasks, setStatus, updateTask } = useTasks();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
+  const [completedExpanded, setCompletedExpanded] = useState(false);
 
-  const todayTasks = useMemo(() => {
+  const { todayTasks, completedToday } = useMemo(() => {
     const openToday = tasks.filter((task) => task.status === 'today');
-    return sortTasks(openToday);
+    const completed = tasks.filter(isCompletedToday).sort((a, b) => {
+      const aTime = a.completedAt ?? '';
+      const bTime = b.completedAt ?? '';
+      return bTime.localeCompare(aTime);
+    });
+    return { todayTasks: sortTasks(openToday), completedToday: completed };
   }, [tasks]);
 
   return (
@@ -90,6 +98,50 @@ export function TodayListScreen() {
               ))}
             </View>
           )}
+
+          {completedToday.length > 0 ? (
+            <View>
+              <View style={styles.sectionHeader}>
+                <Pressable
+                  style={styles.completedTitleWrap}
+                  onPress={() => setCompletedExpanded((prev) => !prev)}
+                  testID="completed-header-list"
+                  hitSlop={8}
+                >
+                  <Text style={styles.completedTitle} numberOfLines={1}>
+                    Completed ({completedToday.length})
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.completedChevron}
+                  onPress={() => setCompletedExpanded((prev) => !prev)}
+                  hitSlop={6}
+                >
+                  <Ionicons
+                    name={completedExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={theme.colors.textMuted}
+                  />
+                </Pressable>
+              </View>
+              {completedExpanded ? (
+                <View style={styles.list} testID="completed-list-list">
+                  {completedToday.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      title={task.title}
+                      subtitle={task.notes || 'No description'}
+                      priority={priorityToLevel(clampPriority(task.priority))}
+                      done
+                      onPress={() => navigation.navigate('TaskDetail', { taskId: task.id })}
+                      onToggle={() => setStatus(task.id, 'today')}
+                      toggleTestID={`completed-toggle-${task.id}`}
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </ScrollView>
       </View>
     </Screen>
@@ -108,6 +160,34 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: theme.spacing.lg,
     gap: 4,
+  },
+  sectionHeader: {
+    marginTop: theme.spacing.lg,
+    marginBottom: theme.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  completedTitleWrap: {
+    flex: 1,
+    marginRight: theme.spacing.sm,
+  },
+  completedTitle: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.display,
+    fontSize: theme.text.headline,
+    flexShrink: 1,
+  },
+  completedChevron: {
+    minWidth: 40,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionTitle: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.display,
+    fontSize: theme.text.headline,
   },
   title: {
     color: theme.colors.text,
@@ -130,3 +210,4 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.lg,
   },
 });
+

@@ -16,7 +16,7 @@ export type Task = {
   priority: 1 | 2 | 3 | 4 | 5;
   estimateMinutes?: number;
   dueAt?: string | null;
-  category?: string;
+  category?: string | null;
   subtasks?: Subtask[];
   createdAt: string;
   updatedAt: string;
@@ -28,6 +28,7 @@ export type TaskDraft = {
   priority: 1 | 2 | 3 | 4 | 5;
   estimateMinutes?: number;
   dueAt?: string | null;
+  category?: string | null;
   status?: TaskStatus;
 };
 
@@ -45,3 +46,6 @@ export interface TaskRepo {
   saveProfile(profile: UserProfile): Promise<void>;
   clearAll(): Promise<void>;
 }
+
+
+

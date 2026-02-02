@@ -20,6 +20,8 @@ import { RootStackParamList } from '../navigation/types';
 import { theme } from '../styles/theme';
 import { formatDuration, minutesFromParts, splitMinutes } from '../lib/duration';
 import { useToast } from '../lib/toast';
+import { categoryLabel, categoryOptions, normalizeCategory, type CategoryKey } from '../lib/categories';
+import { formatDueAt, validateIsoDate } from '../lib/dueDate';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TaskDetail'>;
 
@@ -35,12 +37,14 @@ export function TaskDetailScreen({ navigation, route }: Props) {
   const [dueAt, setDueAt] = useState('');
   const [estimateMinutes, setEstimateMinutes] = useState(45);
   const [priority, setPriority] = useState<1 | 2 | 3 | 4 | 5>(3);
+  const [categoryKey, setCategoryKey] = useState<CategoryKey>('general');
   const [newSubtask, setNewSubtask] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const savingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDeleteConfirm, setIsDeleteConfirm] = useState(false);
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [durationEditorOpen, setDurationEditorOpen] = useState(false);
   const [hoursText, setHoursText] = useState('');
   const [minutesText, setMinutesText] = useState('');
@@ -49,9 +53,10 @@ export function TaskDetailScreen({ navigation, route }: Props) {
     if (!task) return;
     setTitle(task.title);
     setNotes(task.notes ?? '');
-    setDueAt(task.dueAt ?? '');
+    setDueAt(formatDueAt(task.dueAt ?? null) ?? '');
     setEstimateMinutes(task.estimateMinutes ?? 45);
     setPriority(task.priority);
+    setCategoryKey(normalizeCategory(task.category));
     setIsDone(task.status === 'done');
     setSaveStatus('idle');
   }, [task]);
@@ -94,7 +99,11 @@ export function TaskDetailScreen({ navigation, route }: Props) {
   }
 
   const priorityLabel = priority <= 1 ? 'Low' : priority === 2 ? 'Medium' : 'High';
+  const isTaskDone = task.status === 'done' || isDone;
+  const actionLabel = isTaskDone ? 'Restore' : 'Mark Done';
+  const isLongActionLabel = actionLabel.length > 12;
   const subtasks = task.subtasks ?? [];
+  const categoryText = categoryLabel(categoryKey);
 
   const openDurationEditor = (minutes: number) => {
     const parts = splitMinutes(minutes);
@@ -108,11 +117,24 @@ export function TaskDetailScreen({ navigation, route }: Props) {
       ...task,
       title: title.trim() || task.title,
       notes: notes.trim() || undefined,
-      dueAt: dueAt.trim() ? dueAt.trim() : null,
       estimateMinutes,
       priority,
       ...changes,
     });
+  };
+
+  const commitDueAt = () => {
+    const trimmed = dueAt.trim();
+    const nextDueAt = trimmed && validateIsoDate(trimmed) ? trimmed : null;
+    setDueAt(nextDueAt ?? '');
+    commitEdits({ dueAt: nextDueAt });
+    markSaving();
+  };
+
+  const applyCategory = (next: CategoryKey) => {
+    setCategoryKey(next);
+    commitEdits({ category: next === 'general' ? null : next });
+    markSaving();
   };
 
   const handleStartFocus = () => {
@@ -163,9 +185,13 @@ export function TaskDetailScreen({ navigation, route }: Props) {
 
                 <SurfaceCard style={styles.heroCard}>
                   <View style={styles.tagRow}>
-                    <View style={styles.categoryBadge}>
-                      <Text style={styles.categoryText}>{task.category ?? 'Work'}</Text>
-                    </View>
+                    <Pressable
+                      style={styles.categoryBadge}
+                      onPress={() => setIsCategoryMenuOpen(true)}
+                      testID="taskdetail-category"
+                    >
+                      <Text style={styles.categoryText}>{categoryText}</Text>
+                    </Pressable>
                     <Ionicons name="star-outline" size={18} color={theme.colors.textMuted} />
                   </View>
 
@@ -210,8 +236,8 @@ export function TaskDetailScreen({ navigation, route }: Props) {
                           setDueAt(value);
                           markSaving();
                         }}
-                        onEndEditing={() => commitEdits()}
-                        placeholder="Due date"
+                        onEndEditing={commitDueAt}
+                        placeholder="YYYY-MM-DD"
                         placeholderTextColor={theme.colors.textMuted}
                         style={styles.metaChipInput}
                       />
@@ -288,9 +314,40 @@ export function TaskDetailScreen({ navigation, route }: Props) {
                     <Text style={styles.accentButtonText}>Start Focus</Text>
                   </Pressable>
                   <Pressable
-                    style={[styles.primaryButton, isDone && styles.primaryButtonDone]}
+                    style={[
+                      styles.primaryButton,
+                      isLongActionLabel && styles.primaryButtonCompact,
+                    ]}
                     onPress={() => {
-                      if (isDone) return;
+                      if (isTaskDone) {
+                        const snapshot = {
+                          id: task.id,
+                          prevStatus: task.status,
+                          prevCompletedAt: task.completedAt,
+                          prevCompletedFrom: task.completedFrom,
+                        };
+                        const baseTask = { ...task };
+                        const restoreStatus = task.completedFrom === 'inbox' ? 'inbox' : 'today';
+                        setIsDone(false);
+                        setStatus(task.id, restoreStatus);
+                        showToast({
+                          message: 'Restored',
+                          actionLabel: 'Undo',
+                          durationMs: 5000,
+                          onAction: () => {
+                            updateTask({
+                              ...baseTask,
+                              status: 'done',
+                              completedAt: snapshot.prevCompletedAt,
+                              completedFrom: snapshot.prevCompletedFrom,
+                            });
+                            setIsDone(true);
+                          },
+                        });
+                        setTimeout(() => navigation.goBack(), 250);
+                        return;
+                      }
+
                       const snapshot = {
                         id: task.id,
                         prevStatus: task.status,
@@ -316,10 +373,19 @@ export function TaskDetailScreen({ navigation, route }: Props) {
                       });
                       setTimeout(() => navigation.goBack(), 250);
                     }}
-                    disabled={isDone}
                   >
-                    <Ionicons name="checkmark-circle" size={18} color={theme.colors.bg} />
-                    <Text style={styles.primaryButtonText}>{isDone ? 'Done' : 'Mark Done'}</Text>
+                    <View style={styles.primaryButtonContent}>
+                      <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.primaryButtonText,
+                          isLongActionLabel && styles.primaryButtonTextCompact,
+                        ]}
+                      >
+                        {actionLabel}
+                      </Text>
+                    </View>
                   </Pressable>
                 </View>
               </View>
@@ -376,6 +442,32 @@ export function TaskDetailScreen({ navigation, route }: Props) {
                 </Pressable>
               </View>
             )}
+          </SurfaceCard>
+        </View>
+      ) : null}
+
+      {isCategoryMenuOpen ? (
+        <View style={styles.menuOverlay}>
+          <Pressable style={styles.menuBackdrop} onPress={() => setIsCategoryMenuOpen(false)} />
+          <SurfaceCard style={styles.menuCard}>
+            <View style={styles.menuSection}>
+              {categoryOptions.map((option) => (
+                <Pressable
+                  key={option.key}
+                  style={styles.menuItem}
+                  onPress={() => {
+                    applyCategory(option.key);
+                    setIsCategoryMenuOpen(false);
+                  }}
+                  testID={`taskdetail-category-${option.key}`}
+                >
+                  <Text style={styles.menuItemText}>{option.label}</Text>
+                </Pressable>
+              ))}
+              <Pressable style={styles.menuItem} onPress={() => setIsCategoryMenuOpen(false)}>
+                <Text style={styles.menuItemText}>Cancel</Text>
+              </Pressable>
+            </View>
           </SurfaceCard>
         </View>
       ) : null}
@@ -756,18 +848,33 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: theme.radius.lg,
     backgroundColor: theme.colors.primary,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryButtonCompact: {
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  primaryButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-  },
-  primaryButtonDone: {
-    opacity: 0.7,
+    flex: 1,
+    minWidth: 0,
   },
   primaryButtonText: {
-    color: theme.colors.bg,
+    color: '#fff',
     fontFamily: theme.fonts.display,
     fontSize: theme.text.body,
+    flexShrink: 1,
+    minWidth: 0,
+    textAlign: 'center',
+  },
+  primaryButtonTextCompact: {
+    fontSize: 14,
+    letterSpacing: 0.2,
   },
   durationOverlay: {
     position: 'absolute',
