@@ -9,7 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
-    "doctor": "expo-doctor",
+    "doctor": "npx expo-doctor",
     "lint": "eslint . --max-warnings=0",
     "bundle:android": "expo export --platform android --output-dir .expo-export",
     "test": "jest --watchAll=false",

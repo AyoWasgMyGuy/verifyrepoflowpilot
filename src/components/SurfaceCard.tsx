@@ -5,10 +5,15 @@ import { theme } from '../styles/theme';
 type SurfaceCardProps = {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 };
 
-export function SurfaceCard({ children, style }: SurfaceCardProps) {
-  return <View style={[styles.card, style]}>{children}</View>;
+export function SurfaceCard({ children, style, testID }: SurfaceCardProps) {
+  return (
+    <View style={[styles.card, style]} testID={testID}>
+      {children}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
