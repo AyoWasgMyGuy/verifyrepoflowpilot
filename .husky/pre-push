@@ -1,2 +1,2 @@
 #!/bin/sh
-npm run verify
+npm run verify:git

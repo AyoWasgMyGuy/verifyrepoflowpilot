@@ -8,13 +8,13 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "doctor": "expo-doctor",
+    "lint": "eslint . --max-warnings=0",
     "bundle:android": "expo export --platform android --output-dir .expo-export",
     "test": "jest --watchAll=false",
-    "verify:quick": "npm run typecheck && npm test",
-    "verify:full": "npm run typecheck && npm run doctor && npm run bundle:android && npm test",
-    "verify": "npm run verify:full"
+    "verify:git": "npm run typecheck && npm test",
+    "verify": "npm run typecheck && npm run doctor && npm run bundle:android && npm test"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
